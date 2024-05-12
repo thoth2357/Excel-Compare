@@ -106,40 +106,47 @@ class ExcelComparator(QMainWindow):
 
         for row in range(max(len(original_data), len(compare_data))):
             if row >= len(original_data) or row >= len(compare_data):
-                difference = f"Row: {row+1} - Rows are mismatched\n"
-                differences.append(difference)
-            else:
-                original_row = original_data.iloc[row]
-                compare_row = compare_data.iloc[row]
+                if row < len(original_data):
+                    original_row = original_data.iloc[row]
+                    differences.append(f"Row: {row+1} in original sheet is missing in compare sheet\n")
+                    differences.append(f"Row Details: {original_row.to_dict()}\n\n")
+                if row < len(compare_data):
+                    compare_row = compare_data.iloc[row]
+                    differences.append(f"Row: {row+1} in compare sheet is missing in original sheet\n")
+                    differences.append(f"Row Details: {compare_row.to_dict()}\n\n")
+                continue
 
-                if compare_row.isnull().all():
-                    continue
+            original_row = original_data.iloc[row]
+            compare_row = compare_data.iloc[row]
 
-                row_differences = []
+            if compare_row.isnull().all():
+                continue
 
-                for col in range(len(original_row)):
-                    original_value = original_row.iloc[col]
-                    compare_value = compare_row.iloc[col]
+            row_differences = []
 
-                    # Check for whitespace and convert to string for comparison
-                    if isinstance(original_value, str) and isinstance(compare_value, str):
-                        original_value = original_value.strip()
-                        compare_value = compare_value.strip()
+            for col in range(len(original_row)):
+                original_value = original_row.iloc[col]
+                compare_value = compare_row.iloc[col]
 
-                    # Check for Timestamp objects and convert to datetime
-                    if isinstance(original_value, pd.Timestamp):
-                        original_value = original_value.to_pydatetime()
-                    if isinstance(compare_value, pd.Timestamp):
-                        compare_value = compare_value.to_pydatetime()
+                # Check for whitespace and convert to string for comparison
+                if isinstance(original_value, str) and isinstance(compare_value, str):
+                    original_value = original_value.strip()
+                    compare_value = compare_value.strip()
 
-                    # Check if values are similar
-                    if original_value != compare_value:
-                        account_number = original_row['Account No']  # Assuming 'Account No' is the column name
-                        difference = f"Row: {row+1}, Account No: {account_number}, Column: {original_data.columns[col]} - Values differ\n"
-                        row_differences.append(difference)
+                # Check for Timestamp objects and convert to datetime
+                if isinstance(original_value, pd.Timestamp):
+                    original_value = original_value.to_pydatetime()
+                if isinstance(compare_value, pd.Timestamp):
+                    compare_value = compare_value.to_pydatetime()
 
-                if row_differences:
-                    differences.extend(row_differences)
+                # Check if values are similar
+                if original_value != compare_value:
+                    account_number = original_row['Account No']  # Assuming 'Account No' is the column name
+                    difference = f"Row: {row+1}, Account No: {account_number}, Column: {original_data.columns[col]} - Values differ\n\n"
+                    row_differences.append(difference)
+
+            if row_differences:
+                differences.extend(row_differences)
 
         if not differences:
             self.result_text.setText("No differences found")
