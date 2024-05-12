@@ -53,6 +53,7 @@ class ExcelComparator(QMainWindow):
         self.settings_toolbar.addWidget(self.unique_row_label)
 
         self.unique_row_dropdown = QComboBox()
+        self.unique_row_dropdown.setEnabled(False)  # Initially disabled
         self.settings_toolbar.addWidget(self.unique_row_dropdown)
 
         self.original_label = QLabel("Original Sheet: ")
