@@ -1,5 +1,6 @@
 import pandas as pd
 import sys
+from datetime import datetime
 from PySide6.QtWidgets import (
     QApplication,
     QMainWindow,
@@ -18,6 +19,8 @@ from PySide6.QtWidgets import (
 )
 from PySide6.QtGui import QIcon, QFont
 from PySide6.QtCore import Qt
+from fpdf import FPDF
+from bs4 import BeautifulSoup
 
 
 class ExcelComparator(QMainWindow):
@@ -26,6 +29,7 @@ class ExcelComparator(QMainWindow):
 
         self.original_sheet = None
         self.compare_sheet = None
+        self.differences = ""
 
         self.setWindowTitle("Excel Comparator")
         self.setGeometry(100, 100, 600, 400)
@@ -93,6 +97,12 @@ class ExcelComparator(QMainWindow):
         self.compare_button.setIcon(QIcon.fromTheme("document-properties"))
         self.compare_button.clicked.connect(self.compare_sheets)
         self.layout.addWidget(self.compare_button)
+
+        self.download_button = QPushButton("Download Report")
+        self.download_button.setIcon(QIcon.fromTheme("document-save"))
+        self.download_button.clicked.connect(self.download_report)
+        self.layout.addWidget(self.download_button)
+        self.download_button.setEnabled(False)  # Initially disabled
 
         self.result_label = QLabel("Differences: ")
         self.layout.addWidget(self.result_label)
@@ -269,10 +279,71 @@ class ExcelComparator(QMainWindow):
         if row_differences_header:
             differences.append("</ul>")
 
+        self.differences = "".join(differences)
+
         if not differences:
             self.result_text.setText("No differences found")
         else:
-            self.result_text.setHtml("".join(differences))
+            self.result_text.setHtml(self.differences)
+            self.download_button.setEnabled(
+                True
+            )  # Enable the download button if differences are found
+
+    def download_report(self):
+        if not self.differences:
+            QMessageBox.warning(self, "Warning", "No differences to report.")
+            return
+
+        save_dialog = QFileDialog()
+        file_path, _ = save_dialog.getSaveFileName(
+            self, "Save Report", "", "PDF Files (*.pdf)"
+        )
+
+        if file_path:
+            if not file_path.endswith(".pdf"):
+                file_path += ".pdf"
+
+            pdf = FPDF()
+            pdf.add_page()
+            pdf.set_font("Arial", size=12)
+
+            pdf.cell(200, 10, txt="Excel Comparison Report", ln=True, align="C")
+            pdf.cell(
+                200,
+                10,
+                txt=f"Report Date: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}",
+                ln=True,
+                align="C",
+            )
+            pdf.ln(10)
+
+            pdf.set_font("Arial", size=10)
+            pdf.multi_cell(0, 10, txt="Original Sheet: " + self.original_sheet)
+            pdf.multi_cell(0, 10, txt="Compare Sheet: " + self.compare_sheet)
+            pdf.ln(10)
+
+            pdf.set_font("Arial", size=12)
+            pdf.multi_cell(0, 10, txt="Differences:", align="L")
+            pdf.set_font("Arial", size=10)
+            pdf.multi_cell(
+                0, 10, txt=self.format_differences_for_pdf(self.differences), align="L"
+            )
+
+            pdf.output(file_path)
+            QMessageBox.information(self, "Success", "Report saved successfully!")
+
+    def format_differences_for_pdf(self, html):
+        """Convert HTML content to formatted plain text for the PDF report."""
+        soup = BeautifulSoup(html, "html.parser")
+        text = soup.get_text(separator="\n")
+        formatted_text = ""
+        lines = text.split("\n")
+        for line in lines:
+            if "Row:" in line:
+                formatted_text += f"\n{line}\n"
+            else:
+                formatted_text += f"\n{line}\n"
+        return formatted_text.strip()
 
     def show_credits(self):
         credits = "Developer: Oyewunmi Oluwaseyi\nSponsor: Stephen Onuoha Bamidele"
