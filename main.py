@@ -5,6 +5,7 @@ from PySide6.QtWidgets import (
     QMainWindow,
     QFileDialog,
     QVBoxLayout,
+    QHBoxLayout,
     QWidget,
     QLabel,
     QLineEdit,
@@ -26,20 +27,20 @@ class ExcelComparator(QMainWindow):
         self.compare_sheet = None
 
         self.setWindowTitle("Excel Comparator")
-        self.setGeometry(100, 100, 500, 300)
+        self.setGeometry(100, 100, 600, 400)
 
         self.central_widget = QWidget()
         self.setCentralWidget(self.central_widget)
 
         self.layout = QVBoxLayout(self.central_widget)
+        self.layout.setContentsMargins(20, 20, 20, 20)
+        self.layout.setSpacing(20)
 
         self.toolbar = QToolBar()
         self.addToolBar(self.toolbar)
 
         self.credits_button = QPushButton("Credits")
-        self.credits_button.setIcon(
-            QIcon.fromTheme("help-about")
-        )  # Set icon for Credits button
+        self.credits_button.setIcon(QIcon.fromTheme("help-about"))
         self.credits_button.clicked.connect(self.show_credits)
         self.toolbar.addWidget(self.credits_button)
 
@@ -54,7 +55,7 @@ class ExcelComparator(QMainWindow):
         self.settings_toolbar.addWidget(self.unique_row_label)
 
         self.unique_row_dropdown = QComboBox()
-        self.unique_row_dropdown.setEnabled(False)  # Initially disabled
+        self.unique_row_dropdown.setEnabled(False)
         self.settings_toolbar.addWidget(self.unique_row_dropdown)
 
         self.original_label = QLabel("Original Sheet: ")
@@ -64,12 +65,13 @@ class ExcelComparator(QMainWindow):
         self.original_line_edit.setReadOnly(True)
         self.layout.addWidget(self.original_line_edit)
 
+        original_button_layout = QHBoxLayout()
         self.original_button = QPushButton("Browse")
-        self.original_button.setIcon(
-            QIcon.fromTheme("document-open")
-        )  # Set icon for Browse button
+        self.original_button.setIcon(QIcon.fromTheme("document-open"))
         self.original_button.clicked.connect(self.load_original_sheet)
-        self.layout.addWidget(self.original_button)
+        original_button_layout.addWidget(self.original_button)
+
+        self.layout.addLayout(original_button_layout)
 
         self.compare_label = QLabel("Compare Sheet: ")
         self.layout.addWidget(self.compare_label)
@@ -78,17 +80,16 @@ class ExcelComparator(QMainWindow):
         self.compare_line_edit.setReadOnly(True)
         self.layout.addWidget(self.compare_line_edit)
 
+        compare_button_layout = QHBoxLayout()
         self.compare_button = QPushButton("Browse")
-        self.compare_button.setIcon(
-            QIcon.fromTheme("document-open")
-        )  # Set icon for Browse button
+        self.compare_button.setIcon(QIcon.fromTheme("document-open"))
         self.compare_button.clicked.connect(self.load_compare_sheet)
-        self.layout.addWidget(self.compare_button)
+        compare_button_layout.addWidget(self.compare_button)
+
+        self.layout.addLayout(compare_button_layout)
 
         self.compare_button = QPushButton("Compare")
-        self.compare_button.setIcon(
-            QIcon.fromTheme("document-properties")
-        )  # Set icon for Compare button
+        self.compare_button.setIcon(QIcon.fromTheme("document-properties"))
         self.compare_button.clicked.connect(self.compare_sheets)
         self.layout.addWidget(self.compare_button)
 
@@ -99,8 +100,42 @@ class ExcelComparator(QMainWindow):
         self.result_text.setReadOnly(True)
         self.layout.addWidget(self.result_text)
 
-        # Connect radio button signal
+        self.apply_styles()
+
         self.fuzzy_radio_button.toggled.connect(self.enable_disable_dropdown)
+
+    def apply_styles(self):
+        self.setStyleSheet("""
+            QLabel {
+                font-size: 14px;
+                font-weight: bold;
+            }
+            QLineEdit {
+                padding: 5px;
+                font-size: 14px;
+            }
+            QPushButton {
+                padding: 10px;
+                font-size: 14px;
+                background-color: #6200EE;
+                color: white;
+                border-radius: 5px;
+            }
+            QPushButton:hover {
+                background-color: #3700B3;
+            }
+            QRadioButton {
+                font-size: 14px;
+            }
+            QComboBox {
+                padding: 5px;
+                font-size: 14px;
+            }
+            QTextEdit {
+                font-size: 14px;
+                padding: 10px;
+            }
+        """)
 
     def enable_disable_dropdown(self):
         self.unique_row_dropdown.setEnabled(self.fuzzy_radio_button.isChecked())
@@ -171,36 +206,29 @@ class ExcelComparator(QMainWindow):
             row_differences = []
 
             if self.fuzzy_radio_button.isChecked():
-                # Get the selected unique row column
                 unique_row_column = self.unique_row_dropdown.currentText()
 
                 for col in range(len(original_row)):
                     original_value = original_row.iloc[col]
                     compare_value = compare_row.iloc[col]
 
-                    # Check for whitespace and convert to string for comparison
                     if isinstance(original_value, str) and isinstance(
                         compare_value, str
                     ):
                         original_value = original_value.strip()
                         compare_value = compare_value.strip()
 
-                    # Check for Timestamp objects and convert to datetime
                     if isinstance(original_value, pd.Timestamp):
                         original_value = original_value.to_pydatetime()
                     if isinstance(compare_value, pd.Timestamp):
                         compare_value = compare_value.to_pydatetime()
 
-                    # Perform comparison based on selected unique row
                     if original_data.columns[col] == unique_row_column:
                         if original_value != compare_value:
-                            account_number = original_row[
-                                "Account No"
-                            ]  # Assuming 'Account No' is the column name
+                            account_number = original_row["Account No"]
                             difference = f"Row: {row+1}, Account No: {account_number}, Column: {original_data.columns[col]} - Values differ\n\n"
                             row_differences.append(difference)
             else:
-                # Direct comparison when fuzzy search is not enabled
                 for col in range(len(original_row)):
                     original_value = original_row.iloc[col]
                     compare_value = compare_row.iloc[col]
