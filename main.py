@@ -16,7 +16,8 @@ from PySide6.QtWidgets import (
     QComboBox,
     QRadioButton,
 )
-from PySide6.QtGui import QIcon
+from PySide6.QtGui import QIcon, QFont
+from PySide6.QtCore import Qt
 
 
 class ExcelComparator(QMainWindow):
@@ -46,7 +47,7 @@ class ExcelComparator(QMainWindow):
 
         # Settings Toolbar
         self.settings_toolbar = QToolBar()
-        self.addToolBar(self.settings_toolbar)
+        self.addToolBar(Qt.BottomToolBarArea, self.settings_toolbar)
 
         self.fuzzy_radio_button = QRadioButton("Fuzzy Search")
         self.settings_toolbar.addWidget(self.fuzzy_radio_button)
@@ -132,10 +133,15 @@ class ExcelComparator(QMainWindow):
                 font-size: 14px;
             }
             QTextEdit {
-                font-size: 14px;
+                background-color: #fafafa;
                 padding: 10px;
+                font-family: 'Courier New', monospace;
+                font-size: 16px;
             }
         """)
+
+        self.result_text.setFont(QFont("Courier New", 16))
+        self.result_text.setStyleSheet("background-color: #fafafa; color: #333333;")
 
     def enable_disable_dropdown(self):
         self.unique_row_dropdown.setEnabled(self.fuzzy_radio_button.isChecked())
@@ -177,24 +183,30 @@ class ExcelComparator(QMainWindow):
         # Check for additional columns in compare sheet
         additional_columns = set(compare_data.columns) - set(original_data.columns)
         if additional_columns:
-            differences.append("Additional columns found in compare sheet:\n")
+            differences.append("<b>Additional columns found in compare sheet:</b><ul>")
             for col in additional_columns:
-                differences.append(f"- {col}\n")
+                differences.append(f"<li>{col}</li>")
+            differences.append("</ul>")
+
+        row_differences_header = False
 
         for row in range(max(len(original_data), len(compare_data))):
             if row >= len(original_data) or row >= len(compare_data):
+                if not row_differences_header:
+                    differences.append("<b>Row Differences:</b><ul>")
+                    row_differences_header = True
                 if row < len(original_data):
                     original_row = original_data.iloc[row]
                     differences.append(
-                        f"Row: {row+1} in original sheet is missing in compare sheet\n"
+                        f"<li>Row {row+1} in original sheet is missing in compare sheet. "
+                        f"Row Details: {original_row.to_dict()}</li>"
                     )
-                    differences.append(f"Row Details: {original_row.to_dict()}\n\n")
                 if row < len(compare_data):
                     compare_row = compare_data.iloc[row]
                     differences.append(
-                        f"Row: {row+1} in compare sheet is missing in original sheet\n"
+                        f"<li>Row {row+1} in compare sheet is missing in original sheet. "
+                        f"Row Details: {compare_row.to_dict()}</li>"
                     )
-                    differences.append(f"Row Details: {compare_row.to_dict()}\n\n")
                 continue
 
             original_row = original_data.iloc[row]
@@ -226,7 +238,7 @@ class ExcelComparator(QMainWindow):
                     if original_data.columns[col] == unique_row_column:
                         if original_value != compare_value:
                             account_number = original_row["Account No"]
-                            difference = f"Row: {row+1}, Account No: {account_number}, Column: {original_data.columns[col]} - Values differ\n\n"
+                            difference = f"Row: {row+1}, Account No: {account_number}, Column: {original_data.columns[col]} - Values differ"
                             row_differences.append(difference)
             else:
                 for col in range(len(original_row)):
@@ -244,16 +256,23 @@ class ExcelComparator(QMainWindow):
                         compare_value = compare_value.to_pydatetime()
 
                     if original_value != compare_value:
-                        difference = f"Row: {row+1}, Column: {original_data.columns[col]} - Original: {original_value}, Compare: {compare_value}\n\n"
+                        difference = f"Row: {row+1}, Column: {original_data.columns[col]} - Original: {original_value}, Compare: {compare_value}"
                         row_differences.append(difference)
 
             if row_differences:
-                differences.extend(row_differences)
+                if not row_differences_header:
+                    differences.append("<b>Row Differences:</b><ul>")
+                    row_differences_header = True
+                for diff in row_differences:
+                    differences.append(f"<li>{diff}</li>")
+
+        if row_differences_header:
+            differences.append("</ul>")
 
         if not differences:
             self.result_text.setText("No differences found")
         else:
-            self.result_text.setText("".join(differences))
+            self.result_text.setHtml("".join(differences))
 
     def show_credits(self):
         credits = "Developer: Oyewunmi Oluwaseyi\nSponsor: Stephen Onuoha Bamidele"
