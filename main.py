@@ -17,6 +17,7 @@ from PySide6.QtWidgets import (
 )
 from PySide6.QtGui import QIcon
 
+
 class ExcelComparator(QMainWindow):
     def __init__(self):
         super().__init__()
@@ -169,31 +170,53 @@ class ExcelComparator(QMainWindow):
 
             row_differences = []
 
-            # Get the selected unique row column
-            unique_row_column = self.unique_row_dropdown.currentText()
+            if self.fuzzy_radio_button.isChecked():
+                # Get the selected unique row column
+                unique_row_column = self.unique_row_dropdown.currentText()
 
-            for col in range(len(original_row)):
-                original_value = original_row.iloc[col]
-                compare_value = compare_row.iloc[col]
+                for col in range(len(original_row)):
+                    original_value = original_row.iloc[col]
+                    compare_value = compare_row.iloc[col]
 
-                # Check for whitespace and convert to string for comparison
-                if isinstance(original_value, str) and isinstance(compare_value, str):
-                    original_value = original_value.strip()
-                    compare_value = compare_value.strip()
+                    # Check for whitespace and convert to string for comparison
+                    if isinstance(original_value, str) and isinstance(
+                        compare_value, str
+                    ):
+                        original_value = original_value.strip()
+                        compare_value = compare_value.strip()
 
-                # Check for Timestamp objects and convert to datetime
-                if isinstance(original_value, pd.Timestamp):
-                    original_value = original_value.to_pydatetime()
-                if isinstance(compare_value, pd.Timestamp):
-                    compare_value = compare_value.to_pydatetime()
+                    # Check for Timestamp objects and convert to datetime
+                    if isinstance(original_value, pd.Timestamp):
+                        original_value = original_value.to_pydatetime()
+                    if isinstance(compare_value, pd.Timestamp):
+                        compare_value = compare_value.to_pydatetime()
 
-                # Perform comparison based on selected unique row
-                if original_data.columns[col] == unique_row_column:
+                    # Perform comparison based on selected unique row
+                    if original_data.columns[col] == unique_row_column:
+                        if original_value != compare_value:
+                            account_number = original_row[
+                                "Account No"
+                            ]  # Assuming 'Account No' is the column name
+                            difference = f"Row: {row+1}, Account No: {account_number}, Column: {original_data.columns[col]} - Values differ\n\n"
+                            row_differences.append(difference)
+            else:
+                # Direct comparison when fuzzy search is not enabled
+                for col in range(len(original_row)):
+                    original_value = original_row.iloc[col]
+                    compare_value = compare_row.iloc[col]
+
+                    if isinstance(original_value, str):
+                        original_value = original_value.strip()
+                    if isinstance(compare_value, str):
+                        compare_value = compare_value.strip()
+
+                    if isinstance(original_value, pd.Timestamp):
+                        original_value = original_value.to_pydatetime()
+                    if isinstance(compare_value, pd.Timestamp):
+                        compare_value = compare_value.to_pydatetime()
+
                     if original_value != compare_value:
-                        account_number = original_row[
-                            "Account No"
-                        ]  # Assuming 'Account No' is the column name
-                        difference = f"Row: {row+1}, Account No: {account_number}, Column: {original_data.columns[col]} - Values differ\n\n"
+                        difference = f"Row: {row+1}, Column: {original_data.columns[col]} - Original: {original_value}, Compare: {compare_value}\n\n"
                         row_differences.append(difference)
 
             if row_differences:
