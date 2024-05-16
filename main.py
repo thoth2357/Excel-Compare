@@ -22,6 +22,7 @@ from PySide6.QtCore import Qt
 from fpdf import FPDF
 from bs4 import BeautifulSoup
 
+import socket
 
 class ExcelComparator(QMainWindow):
     def __init__(self):
@@ -302,7 +303,9 @@ class ExcelComparator(QMainWindow):
         if file_path:
             if not file_path.endswith(".pdf"):
                 file_path += ".pdf"
-
+                
+            computer_name = socket.gethostname()
+    
             pdf = FPDF()
             pdf.add_page()
             pdf.set_font("Arial", size=12)
@@ -315,6 +318,7 @@ class ExcelComparator(QMainWindow):
                 ln=True,
                 align="C",
             )
+            pdf.cell(200, 10, txt=f"Computer Name: {computer_name}", ln=True, align='C')
             pdf.ln(10)
 
             pdf.set_font("Arial", size=10)
