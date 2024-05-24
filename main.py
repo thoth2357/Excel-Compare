@@ -33,6 +33,7 @@ DB_NAME = "postgres"
 DB_USER = "postgres"
 DB_PASSWORD = "qwertyui8"
 
+
 class LoginDialog(QDialog):
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -67,35 +68,34 @@ class LoginDialog(QDialog):
         username = self.username_edit.text()
         pin = self.pin_edit.text()
 
-        # try:
-        conn = psycopg2.connect(
-            host=DB_HOST, dbname=DB_NAME, user=DB_USER, password=DB_PASSWORD
-        )
-        cur = conn.cursor()
-        print("Connected to database", username)
-        statment = f"SELECT user_role, user_pin FROM users WHERE username = '{username}'"  # noqa
-        cur.execute(
-            statment
-        )
-        result = cur.fetchone()
-        if result:
-            user_role, hashed_pin = result
-            try:
-                self.ph.verify(hashed_pin, pin)
-                cur.execute(
-                    "INSERT INTO logs (username, log_time) VALUES (%s, %s)",
-                    (username, datetime.now()),
-                )
-                conn.commit()
-                cur.close()
-                conn.close()
-                self.accept()
-            except VerifyMismatchError:
-                QMessageBox.warning(self, "Error", "Invalid PIN")
-        else:
-            QMessageBox.warning(self, "Error", "Invalid Username")
-        # except Exception as e:
-        #     QMessageBox.critical(self, "Error", str(e))
+        try:
+            conn = psycopg2.connect(
+                host=DB_HOST, dbname=DB_NAME, user=DB_USER, password=DB_PASSWORD
+            )
+            cur = conn.cursor()
+            cur.execute(
+                "SELECT user_role, user_pin FROM users WHERE username = %s", (username,)
+            )
+            result = cur.fetchone()
+            if result:
+                user_role, hashed_pin = result
+                try:
+                    self.ph.verify(hashed_pin, pin)
+                    cur.execute(
+                        "INSERT INTO logs (username, log_time) VALUES (%s, %s)",
+                        (username, datetime.now()),
+                    )
+                    conn.commit()
+                    cur.close()
+                    conn.close()
+                    self.accept()
+                except VerifyMismatchError:
+                    QMessageBox.warning(self, "Error", "Invalid PIN")
+            else:
+                QMessageBox.warning(self, "Error", "Invalid Username")
+        except Exception as e:
+            QMessageBox.critical(self, "Error", str(e))
+
 
 class ExcelComparator(QMainWindow):
     def __init__(self, username):
@@ -225,7 +225,7 @@ class ExcelComparator(QMainWindow):
             }
         """)
 
-        self.result_text.setFont(QFont('Courier New', 16))
+        self.result_text.setFont(QFont("Courier New", 16))
         self.result_text.setStyleSheet("background-color: #fafafa; color: #333333;")
 
     def enable_disable_dropdown(self):
@@ -233,28 +233,58 @@ class ExcelComparator(QMainWindow):
 
     def load_original_sheet(self):
         file_dialog = QFileDialog()
-        filename = file_dialog.getOpenFileName(self, "Open Original Sheet")
-        self.original_sheet = filename[0]
-        self.original_line_edit.setText(self.original_sheet)
+        filename, _ = file_dialog.getOpenFileName(
+            self,
+            "Open Original Sheet",
+            "",
+            "CSV Files (*.csv);;Excel Files (*.xls *.xlsx)",
+        )
+        if filename:
+            self.original_sheet = filename
+            self.original_line_edit.setText(self.original_sheet)
 
-        # Populate unique row dropdown
-        if self.original_sheet:
-            original_data = pd.read_excel(self.original_sheet)
-            self.unique_row_dropdown.clear()
-            self.unique_row_dropdown.addItems(original_data.columns)
+            # Populate unique row dropdown
+            try:
+                if filename.endswith(".csv"):
+                    original_data = pd.read_csv(self.original_sheet)
+                else:
+                    original_data = pd.read_excel(self.original_sheet)
+                self.unique_row_dropdown.clear()
+                self.unique_row_dropdown.addItems(original_data.columns)
+            except Exception as e:
+                QMessageBox.critical(
+                    self, "Error", f"Failed to load the file: {str(e)}"
+                )
 
     def load_compare_sheet(self):
         file_dialog = QFileDialog()
-        filename = file_dialog.getOpenFileName(self, "Open Compare Sheet")
-        self.compare_sheet = filename[0]
-        self.compare_line_edit.setText(self.compare_sheet)
+        filename, _ = file_dialog.getOpenFileName(
+            self,
+            "Open Compare Sheet",
+            "",
+            "CSV Files (*.csv);;Excel Files (*.xls *.xlsx)",
+        )
+        if filename:
+            self.compare_sheet = filename
+            self.compare_line_edit.setText(self.compare_sheet)
 
     def compare_sheets(self):
         if self.original_sheet is None or self.compare_sheet is None:
             return
 
-        original_data = pd.read_excel(self.original_sheet)
-        compare_data = pd.read_excel(self.compare_sheet)
+        try:
+            if self.original_sheet.endswith(".csv"):
+                original_data = pd.read_csv(self.original_sheet)
+            else:
+                original_data = pd.read_excel(self.original_sheet)
+
+            if self.compare_sheet.endswith(".csv"):
+                compare_data = pd.read_csv(self.compare_sheet)
+            else:
+                compare_data = pd.read_excel(self.compare_sheet)
+        except Exception as e:
+            QMessageBox.critical(self, "Error", f"Failed to load the files: {str(e)}")
+            return
 
         # Check if columns match
         if not original_data.columns.equals(compare_data.columns):
@@ -309,7 +339,9 @@ class ExcelComparator(QMainWindow):
                     original_value = original_row.iloc[col]
                     compare_value = compare_row.iloc[col]
 
-                    if isinstance(original_value, str) and isinstance(compare_value, str):
+                    if isinstance(original_value, str) and isinstance(
+                        compare_value, str
+                    ):
                         original_value = original_value.strip()
                         compare_value = compare_value.strip()
 
@@ -358,7 +390,9 @@ class ExcelComparator(QMainWindow):
             self.result_text.setText("No differences found")
         else:
             self.result_text.setHtml(self.differences)
-            self.download_button.setEnabled(True)  # Enable the download button if differences are found
+            self.download_button.setEnabled(
+                True
+            )  # Enable the download button if differences are found
 
     def download_report(self):
         if not self.differences:
@@ -366,7 +400,9 @@ class ExcelComparator(QMainWindow):
             return
 
         save_dialog = QFileDialog()
-        file_path, _ = save_dialog.getSaveFileName(self, "Save Report", "", "PDF Files (*.pdf)")
+        file_path, _ = save_dialog.getSaveFileName(
+            self, "Save Report", "", "PDF Files (*.pdf)"
+        )
 
         if file_path:
             if not file_path.endswith(".pdf"):
@@ -378,10 +414,16 @@ class ExcelComparator(QMainWindow):
             pdf.add_page()
             pdf.set_font("Arial", size=12)
 
-            pdf.cell(200, 10, txt="Excel Comparison Report", ln=True, align='C')
-            pdf.cell(200, 10, txt=f"Report Date: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}", ln=True, align='C')
-            pdf.cell(200, 10, txt=f"Computer Name: {computer_name}", ln=True, align='C')
-            pdf.cell(200, 10, txt=f"Generated by: {self.username}", ln=True, align='C')
+            pdf.cell(200, 10, txt="Excel Comparison Report", ln=True, align="C")
+            pdf.cell(
+                200,
+                10,
+                txt=f"Report Date: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}",
+                ln=True,
+                align="C",
+            )
+            pdf.cell(200, 10, txt=f"Computer Name: {computer_name}", ln=True, align="C")
+            pdf.cell(200, 10, txt=f"Generated by: {self.username}", ln=True, align="C")
             pdf.ln(10)
 
             pdf.set_font("Arial", size=10)
@@ -390,9 +432,11 @@ class ExcelComparator(QMainWindow):
             pdf.ln(10)
 
             pdf.set_font("Arial", size=12)
-            pdf.multi_cell(0, 10, txt="Differences:", align='L')
+            pdf.multi_cell(0, 10, txt="Differences:", align="L")
             pdf.set_font("Arial", size=10)
-            pdf.multi_cell(0, 10, txt=self.format_differences_for_pdf(self.differences), align='L')
+            pdf.multi_cell(
+                0, 10, txt=self.format_differences_for_pdf(self.differences), align="L"
+            )
 
             pdf.output(file_path)
             QMessageBox.information(self, "Success", "Report saved successfully!")
@@ -400,7 +444,7 @@ class ExcelComparator(QMainWindow):
     def format_differences_for_pdf(self, html):
         """Convert HTML content to formatted plain text for the PDF report."""
         soup = BeautifulSoup(html, "html.parser")
-        text = soup.get_text(separator='\n')
+        text = soup.get_text(separator="\n")
         formatted_text = ""
         lines = text.split("\n")
         for line in lines:
@@ -417,7 +461,7 @@ class ExcelComparator(QMainWindow):
 
 if __name__ == "__main__":
     app = QApplication(sys.argv)
-    
+
     login = LoginDialog()
     if login.exec() == QDialog.Accepted:
         username = login.username_edit.text()
