@@ -1,9 +1,11 @@
 import pandas as pd
 import sys
+import socket
 from datetime import datetime
 from PySide6.QtWidgets import (
     QApplication,
     QMainWindow,
+    QDialog,
     QFileDialog,
     QVBoxLayout,
     QHBoxLayout,
@@ -21,13 +23,85 @@ from PySide6.QtGui import QIcon, QFont
 from PySide6.QtCore import Qt
 from fpdf import FPDF
 from bs4 import BeautifulSoup
+import psycopg2
+from argon2 import PasswordHasher
+from argon2.exceptions import VerifyMismatchError
 
-import socket
+# Constants for database connection
+DB_HOST = "127.0.0.1"
+DB_NAME = "postgres"
+DB_USER = "postgres"
+DB_PASSWORD = "qwertyui8"
+
+class LoginDialog(QDialog):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+
+        self.setWindowTitle("Login")
+        self.setGeometry(100, 100, 300, 150)
+
+        layout = QVBoxLayout()
+
+        self.username_label = QLabel("Username:")
+        layout.addWidget(self.username_label)
+
+        self.username_edit = QLineEdit()
+        layout.addWidget(self.username_edit)
+
+        self.pin_label = QLabel("PIN:")
+        layout.addWidget(self.pin_label)
+
+        self.pin_edit = QLineEdit()
+        self.pin_edit.setEchoMode(QLineEdit.Password)
+        layout.addWidget(self.pin_edit)
+
+        self.login_button = QPushButton("Login")
+        self.login_button.clicked.connect(self.verify_credentials)
+        layout.addWidget(self.login_button)
+
+        self.setLayout(layout)
+
+        self.ph = PasswordHasher()
+
+    def verify_credentials(self):
+        username = self.username_edit.text()
+        pin = self.pin_edit.text()
+
+        # try:
+        conn = psycopg2.connect(
+            host=DB_HOST, dbname=DB_NAME, user=DB_USER, password=DB_PASSWORD
+        )
+        cur = conn.cursor()
+        print("Connected to database", username)
+        statment = f"SELECT user_role, user_pin FROM users WHERE username = '{username}'"  # noqa
+        cur.execute(
+            statment
+        )
+        result = cur.fetchone()
+        if result:
+            user_role, hashed_pin = result
+            try:
+                self.ph.verify(hashed_pin, pin)
+                cur.execute(
+                    "INSERT INTO logs (username, log_time) VALUES (%s, %s)",
+                    (username, datetime.now()),
+                )
+                conn.commit()
+                cur.close()
+                conn.close()
+                self.accept()
+            except VerifyMismatchError:
+                QMessageBox.warning(self, "Error", "Invalid PIN")
+        else:
+            QMessageBox.warning(self, "Error", "Invalid Username")
+        # except Exception as e:
+        #     QMessageBox.critical(self, "Error", str(e))
 
 class ExcelComparator(QMainWindow):
-    def __init__(self):
+    def __init__(self, username):
         super().__init__()
 
+        self.username = username
         self.original_sheet = None
         self.compare_sheet = None
         self.differences = ""
@@ -151,7 +225,7 @@ class ExcelComparator(QMainWindow):
             }
         """)
 
-        self.result_text.setFont(QFont("Courier New", 16))
+        self.result_text.setFont(QFont('Courier New', 16))
         self.result_text.setStyleSheet("background-color: #fafafa; color: #333333;")
 
     def enable_disable_dropdown(self):
@@ -235,9 +309,7 @@ class ExcelComparator(QMainWindow):
                     original_value = original_row.iloc[col]
                     compare_value = compare_row.iloc[col]
 
-                    if isinstance(original_value, str) and isinstance(
-                        compare_value, str
-                    ):
+                    if isinstance(original_value, str) and isinstance(compare_value, str):
                         original_value = original_value.strip()
                         compare_value = compare_value.strip()
 
@@ -286,9 +358,7 @@ class ExcelComparator(QMainWindow):
             self.result_text.setText("No differences found")
         else:
             self.result_text.setHtml(self.differences)
-            self.download_button.setEnabled(
-                True
-            )  # Enable the download button if differences are found
+            self.download_button.setEnabled(True)  # Enable the download button if differences are found
 
     def download_report(self):
         if not self.differences:
@@ -296,29 +366,22 @@ class ExcelComparator(QMainWindow):
             return
 
         save_dialog = QFileDialog()
-        file_path, _ = save_dialog.getSaveFileName(
-            self, "Save Report", "", "PDF Files (*.pdf)"
-        )
+        file_path, _ = save_dialog.getSaveFileName(self, "Save Report", "", "PDF Files (*.pdf)")
 
         if file_path:
             if not file_path.endswith(".pdf"):
                 file_path += ".pdf"
-                
+
             computer_name = socket.gethostname()
-    
+
             pdf = FPDF()
             pdf.add_page()
             pdf.set_font("Arial", size=12)
 
-            pdf.cell(200, 10, txt="Excel Comparison Report", ln=True, align="C")
-            pdf.cell(
-                200,
-                10,
-                txt=f"Report Date: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}",
-                ln=True,
-                align="C",
-            )
+            pdf.cell(200, 10, txt="Excel Comparison Report", ln=True, align='C')
+            pdf.cell(200, 10, txt=f"Report Date: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}", ln=True, align='C')
             pdf.cell(200, 10, txt=f"Computer Name: {computer_name}", ln=True, align='C')
+            pdf.cell(200, 10, txt=f"Generated by: {self.username}", ln=True, align='C')
             pdf.ln(10)
 
             pdf.set_font("Arial", size=10)
@@ -327,11 +390,9 @@ class ExcelComparator(QMainWindow):
             pdf.ln(10)
 
             pdf.set_font("Arial", size=12)
-            pdf.multi_cell(0, 10, txt="Differences:", align="L")
+            pdf.multi_cell(0, 10, txt="Differences:", align='L')
             pdf.set_font("Arial", size=10)
-            pdf.multi_cell(
-                0, 10, txt=self.format_differences_for_pdf(self.differences), align="L"
-            )
+            pdf.multi_cell(0, 10, txt=self.format_differences_for_pdf(self.differences), align='L')
 
             pdf.output(file_path)
             QMessageBox.information(self, "Success", "Report saved successfully!")
@@ -339,14 +400,14 @@ class ExcelComparator(QMainWindow):
     def format_differences_for_pdf(self, html):
         """Convert HTML content to formatted plain text for the PDF report."""
         soup = BeautifulSoup(html, "html.parser")
-        text = soup.get_text(separator="\n")
+        text = soup.get_text(separator='\n')
         formatted_text = ""
         lines = text.split("\n")
         for line in lines:
             if "Row:" in line:
                 formatted_text += f"\n{line}\n"
             else:
-                formatted_text += f"\n{line}\n"
+                formatted_text += f"{line}\n"
         return formatted_text.strip()
 
     def show_credits(self):
@@ -356,6 +417,12 @@ class ExcelComparator(QMainWindow):
 
 if __name__ == "__main__":
     app = QApplication(sys.argv)
-    window = ExcelComparator()
-    window.show()
-    sys.exit(app.exec())
+    
+    login = LoginDialog()
+    if login.exec() == QDialog.Accepted:
+        username = login.username_edit.text()
+        window = ExcelComparator(username)
+        window.show()
+        sys.exit(app.exec())
+    else:
+        sys.exit()
