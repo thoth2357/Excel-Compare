@@ -73,16 +73,18 @@ class LoginDialog(QDialog):
                 host=DB_HOST, dbname=DB_NAME, user=DB_USER, password=DB_PASSWORD
             )
             cur = conn.cursor()
-            cur.execute(
-                "SELECT user_role, user_pin FROM users WHERE username = %s", (username,)
+
+            statment = (
+                f"SELECT user_role, password FROM public.user WHERE username = '{username}'"  # noqa
             )
+            cur.execute(statment)
             result = cur.fetchone()
             if result:
                 user_role, hashed_pin = result
                 try:
                     self.ph.verify(hashed_pin, pin)
                     cur.execute(
-                        "INSERT INTO logs (username, log_time) VALUES (%s, %s)",
+                        "INSERT INTO log (username, log_time) VALUES (%s, %s)",
                         (username, datetime.now()),
                     )
                     conn.commit()
