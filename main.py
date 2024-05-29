@@ -28,10 +28,10 @@ from argon2 import PasswordHasher
 from argon2.exceptions import VerifyMismatchError
 
 # Constants for database connection
-DB_HOST = "127.0.0.1"
-DB_NAME = "postgres"
-DB_USER = "postgres"
-DB_PASSWORD = "qwertyui8"
+DB_HOST = "dpg-cpau3mm3e1ms73a00mug-a.oregon-postgres.render.com"
+DB_NAME = "excelcompare"
+DB_USER = "thoth"
+DB_PASSWORD = "mWxyGn3ykRlm732OyuRDKM1RaAgPllNW"
 
 
 class LoginDialog(QDialog):
@@ -69,27 +69,21 @@ class LoginDialog(QDialog):
         pin = self.pin_edit.text()
 
         try:
-            conn = psycopg2.connect(
+            self.conn = psycopg2.connect(
                 host=DB_HOST, dbname=DB_NAME, user=DB_USER, password=DB_PASSWORD
             )
-            cur = conn.cursor()
+            self.cur = self.conn.cursor()
 
-            statment = (
-                f"SELECT user_role, password FROM public.user WHERE username = '{username}'"  # noqa
-            )
-            cur.execute(statment)
-            result = cur.fetchone()
+            statment = f"SELECT user_role, password FROM public.user WHERE username = '{username}'"  # noqa
+            self.cur.execute(statment)
+            result = self.cur.fetchone()
             if result:
                 user_role, hashed_pin = result
                 try:
                     self.ph.verify(hashed_pin, pin)
-                    cur.execute(
-                        "INSERT INTO log (username, log_time) VALUES (%s, %s)",
-                        (username, datetime.now()),
-                    )
-                    conn.commit()
-                    cur.close()
-                    conn.close()
+                    self.conn.commit()
+                    self.cur.close()
+                    self.conn.close()
                     self.accept()
                 except VerifyMismatchError:
                     QMessageBox.warning(self, "Error", "Invalid PIN")
@@ -271,6 +265,10 @@ class ExcelComparator(QMainWindow):
             self.compare_line_edit.setText(self.compare_sheet)
 
     def compare_sheets(self):
+        self.conn = psycopg2.connect(
+            host=DB_HOST, dbname=DB_NAME, user=DB_USER, password=DB_PASSWORD
+        )
+        self.cur = self.conn.cursor()
         if self.original_sheet is None or self.compare_sheet is None:
             return
 
@@ -315,13 +313,13 @@ class ExcelComparator(QMainWindow):
                 if row < len(original_data):
                     original_row = original_data.iloc[row]
                     differences.append(
-                        f"<li>Row {row+1} in original sheet is missing in compare sheet. "
+                        f"<li>Row {row+2} in original sheet is missing in compare sheet. "
                         f"Row Details: {original_row.to_dict()}</li>"
                     )
                 if row < len(compare_data):
                     compare_row = compare_data.iloc[row]
                     differences.append(
-                        f"<li>Row {row+1} in compare sheet is missing in original sheet. "
+                        f"<li>Row {row+2} in compare sheet is missing in original sheet. "
                         f"Row Details: {compare_row.to_dict()}</li>"
                     )
                 continue
@@ -334,6 +332,7 @@ class ExcelComparator(QMainWindow):
 
             row_differences = []
 
+            # Handle fuzzy search if enabled
             if self.fuzzy_radio_button.isChecked():
                 unique_row_column = self.unique_row_dropdown.currentText()
 
@@ -354,26 +353,48 @@ class ExcelComparator(QMainWindow):
 
                     if original_data.columns[col] == unique_row_column:
                         if original_value != compare_value:
-                            account_number = original_row["Account No"]
-                            difference = f"Row: {row+1}, Account No: {account_number}, Column: {original_data.columns[col]} - Values differ"
+                            account_number = original_row["account no"]
+                            difference = f"Row: {row+2}, account no: {account_number}, Column: {original_data.columns[col]} - Values differ"
                             row_differences.append(difference)
             else:
                 for col in range(len(original_row)):
                     original_value = original_row.iloc[col]
                     compare_value = compare_row.iloc[col]
 
+                    # Normalize the values
+                    if pd.isnull(original_value) or pd.isnull(compare_value):
+                        if pd.isnull(original_value) and pd.isnull(compare_value):
+                            continue  # both are NaN, consider them equal
+                        else:
+                            difference = f"Row: {row+2}, Column: {original_data.columns[col]} - Original: {original_value}, Compare: {compare_value}"
+                            row_differences.append(difference)
+                            continue
+
+                    # Handle numeric comparison with tolerance for floating-point numbers
+                    try:
+                        original_value_float = float(original_value)
+                        compare_value_float = float(compare_value)
+                        if (
+                            abs(original_value_float - compare_value_float) < 1e-9
+                        ):  # Tolerance for floating-point comparison
+                            continue  # They are considered equal
+                    except ValueError:
+                        pass  # One of the values is not a number, fallback to direct comparison
+
+                    # Strip whitespace for string values
                     if isinstance(original_value, str):
                         original_value = original_value.strip()
                     if isinstance(compare_value, str):
                         compare_value = compare_value.strip()
 
+                    # Convert Timestamp to datetime
                     if isinstance(original_value, pd.Timestamp):
                         original_value = original_value.to_pydatetime()
                     if isinstance(compare_value, pd.Timestamp):
                         compare_value = compare_value.to_pydatetime()
 
                     if original_value != compare_value:
-                        difference = f"Row: {row+1}, Column: {original_data.columns[col]} - Original: {original_value}, Compare: {compare_value}"
+                        difference = f"Row: {row+2}, Column: {original_data.columns[col]} - Original: {original_value}, Compare: {compare_value}"
                         row_differences.append(difference)
 
             if row_differences:
@@ -395,6 +416,13 @@ class ExcelComparator(QMainWindow):
             self.download_button.setEnabled(
                 True
             )  # Enable the download button if differences are found
+            self.cur.execute(
+                "INSERT INTO log (username, log_time, document_differences, interface) VALUES (%s, %s, %s, %s)",  # noqa
+                (self.username, datetime.now(), self.differences, "Desktop"),
+            )
+            self.conn.commit()
+            self.cur.close()
+            self.conn.close()
 
     def download_report(self):
         if not self.differences:
