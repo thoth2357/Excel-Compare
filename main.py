@@ -124,10 +124,10 @@ class ExcelComparator(QMainWindow):
         self.settings_toolbar = QToolBar()
         self.addToolBar(Qt.BottomToolBarArea, self.settings_toolbar)
 
-        self.fuzzy_radio_button = QRadioButton("Fuzzy Search")
-        self.settings_toolbar.addWidget(self.fuzzy_radio_button)
+        self.specific_search_radio_button = QRadioButton("Specific Column Search")
+        self.settings_toolbar.addWidget(self.specific_search_radio_button)
 
-        self.unique_row_label = QLabel("Unique Row:")
+        self.unique_row_label = QLabel("Column to Compare:")
         self.settings_toolbar.addWidget(self.unique_row_label)
 
         self.unique_row_dropdown = QComboBox()
@@ -184,7 +184,7 @@ class ExcelComparator(QMainWindow):
 
         self.apply_styles()
 
-        self.fuzzy_radio_button.toggled.connect(self.enable_disable_dropdown)
+        self.specific_search_radio_button.toggled.connect(self.enable_disable_dropdown)
 
     def apply_styles(self):
         self.setStyleSheet("""
@@ -225,7 +225,9 @@ class ExcelComparator(QMainWindow):
         self.result_text.setStyleSheet("background-color: #fafafa; color: #333333;")
 
     def enable_disable_dropdown(self):
-        self.unique_row_dropdown.setEnabled(self.fuzzy_radio_button.isChecked())
+        self.unique_row_dropdown.setEnabled(
+            self.specific_search_radio_button.isChecked()
+        )
 
     def load_original_sheet(self):
         file_dialog = QFileDialog()
@@ -332,18 +334,32 @@ class ExcelComparator(QMainWindow):
 
             row_differences = []
 
-            # Handle fuzzy search if enabled
-            if self.fuzzy_radio_button.isChecked():
-                unique_row_column = self.unique_row_dropdown.currentText()
+            # Handle specific column search if enabled
+            if self.specific_search_radio_button.isChecked():
+                specific_column = self.unique_row_dropdown.currentText()
+                if specific_column in original_data.columns:
+                    original_value = original_row[specific_column]
+                    compare_value = compare_row[specific_column]
 
-                for col in range(len(original_row)):
-                    original_value = original_row.iloc[col]
-                    compare_value = compare_row.iloc[col]
+                    if pd.isnull(original_value) or pd.isnull(compare_value):
+                        if pd.isnull(original_value) and pd.isnull(compare_value):
+                            continue  # both are NaN, consider them equal
+                        else:
+                            difference = f"Row: {row+2}, Column: {specific_column} - Original: {original_value}, Compare: {compare_value}"
+                            row_differences.append(difference)
+                            continue
 
-                    if isinstance(original_value, str) and isinstance(
-                        compare_value, str
-                    ):
+                    try:
+                        original_value_float = float(original_value)
+                        compare_value_float = float(compare_value)
+                        if abs(original_value_float - compare_value_float) < 1e-9:
+                            continue  # They are considered equal
+                    except ValueError:
+                        pass  # One of the values is not a number, fallback to direct comparison
+
+                    if isinstance(original_value, str):
                         original_value = original_value.strip()
+                    if isinstance(compare_value, str):
                         compare_value = compare_value.strip()
 
                     if isinstance(original_value, pd.Timestamp):
@@ -351,17 +367,14 @@ class ExcelComparator(QMainWindow):
                     if isinstance(compare_value, pd.Timestamp):
                         compare_value = compare_value.to_pydatetime()
 
-                    if original_data.columns[col] == unique_row_column:
-                        if original_value != compare_value:
-                            account_number = original_row["account no"]
-                            difference = f"Row: {row+2}, account no: {account_number}, Column: {original_data.columns[col]} - Values differ"
-                            row_differences.append(difference)
+                    if original_value != compare_value:
+                        difference = f"Row: {row+2}, Column: {specific_column} - Original: {original_value}, Compare: {compare_value}"
+                        row_differences.append(difference)
             else:
                 for col in range(len(original_row)):
                     original_value = original_row.iloc[col]
                     compare_value = compare_row.iloc[col]
 
-                    # Normalize the values
                     if pd.isnull(original_value) or pd.isnull(compare_value):
                         if pd.isnull(original_value) and pd.isnull(compare_value):
                             continue  # both are NaN, consider them equal
@@ -370,24 +383,19 @@ class ExcelComparator(QMainWindow):
                             row_differences.append(difference)
                             continue
 
-                    # Handle numeric comparison with tolerance for floating-point numbers
                     try:
                         original_value_float = float(original_value)
                         compare_value_float = float(compare_value)
-                        if (
-                            abs(original_value_float - compare_value_float) < 1e-9
-                        ):  # Tolerance for floating-point comparison
+                        if abs(original_value_float - compare_value_float) < 1e-9:
                             continue  # They are considered equal
                     except ValueError:
                         pass  # One of the values is not a number, fallback to direct comparison
 
-                    # Strip whitespace for string values
                     if isinstance(original_value, str):
                         original_value = original_value.strip()
                     if isinstance(compare_value, str):
                         compare_value = compare_value.strip()
 
-                    # Convert Timestamp to datetime
                     if isinstance(original_value, pd.Timestamp):
                         original_value = original_value.to_pydatetime()
                     if isinstance(compare_value, pd.Timestamp):
